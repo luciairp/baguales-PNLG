@@ -1,0 +1,222 @@
+---
+title: "Análisis evaluación plan 2016-2022"
+author: "LRP"
+date: '2022-06-27'
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Problemas con datos
+- Faltan cargar tracks de todas las salidas desde 2021. Sin el dato del track es imposible recuperar la información de km recorridos, que es el mejor indicador de esfuerzo hasta ahora.Por un lado está el problema del dato faltante, pero por otro lado está la dificultad de digitalizar este dato al mismo tiempo que los de los abatimientos. ¿Agregar campo en la planilla? Por más que no lo completen, para que salte cartel que diga "cargar km recorridos o subir archivo gpx a carpeta correspondiente". ¿Hay otra manera de registrar el esfuerzo/duración/longitud recorrida en la salida? ¿criterios para salida larga/salida corta?
+- El tiempo que dura la recorrida se registra mal en la planilla, hay que cambiar el formato hora por el valor en horas decimales de la diferencia entre inicio y fin de actividad. O eliminar columna que calcula diferencia (así estaba antes creo, no sé bien qué pasó, es el formato automático del excel para horas).
+
+# Resultados del plan de extracción
+
+## Extracción general
+```{r echo=FALSE}
+library(tidyverse)
+library(lubridate)
+library(janitor)
+```
+
+```{r echo=FALSE}
+datos <- read_csv("datos_salida.csv", 
+                  col_types = cols(.default = "?",
+                                   m = col_double(),
+                                   d = col_double(),
+                                   zona = col_factor(levels = c("BR","BSO","BSE","MSC","BSS","LF")),
+                                   nutri = col_factor(levels = c("Desnutrido","Regular","Muy Bueno", "Desconocido","No corresponde")))) %>% 
+  remove_empty(which = "rows")
+```
+
+La primera dificultad es el cálculo del esfuerzo. 
+Dado que las personas que entran a cazar se mueven juntas y no se separan demasiado por cuestiones de seguridad, que sean más o menos personas, en principio, no debería impactar en la capacidad de extracción. La distancia recorrida en cada salida debería ser la variable que mejor refleje el esfuerzo de búsqueda realizado. Es intrínsecamente cierto que salidas más extensas, de más kilómetros, implicarán tiempos mayores. Sin embargo la actividad en sí requiere de tiempo de rastreo, acecho, aproximación que no siempre se refleja en más kilómetros recorridos. Además, dado que el registro horario es más confiable que el de distancias, reviso si hablan de algo más o menos parecido...
+```{r}
+cor_horas_km <- ggplot(data = datos,aes(x = km, y = horas))+
+  geom_point()+
+  geom_smooth(method="lm", se=F)+
+  xlim(c(0,20))
+
+```
+Elimino un dato que está mal calculado (35 kilómetros y 4 horas).
+No hace falta sufrir por el kilometraje recorrido quizás, siempre y cuando el tiempo hable siempre del esfuerzo de captura... El riesgo está en que el tiempo registrado hablo del inicio y final de la actividad en terreno, y que esté sumando tiempo de espera de embarcación, o de regreso al punto inicial, sin actividad de caza. En todo caso sería posible a futuro ajustar que el tiempo registrado refleje este tiempo y no otro. Difícil pero no imposible. 
+
+Teniendo en cuenta que a partir de julio de 2021 se modificó la cantidad de datos morfométricos a tomar con cada abatimiento, y que eso redujo considerablemente el tiempo fijo que llevaba completar la planilla de cada ejemplar, es esperable que la relación entre kilómetros y tiempo se modifque desde julio de 2021. Sin embargo, desde ese momento no fue posible contar con el registro de los tracks de recorrida salvo por una única salida (29 de julio de 2021). La regresión lineal de tiempo en kilómetros se acota a marzo 2020, lo que en la práctica solo excluye al registro del 29 de julio de 2021.
+
+Hago el ajuste de la regresión lineal hasta marzo 2020:
+```{r}
+datos_regr <- datos %>% 
+  filter(y < 2021) %>% 
+  filter(km < 20)
+
+regr_horas_km <- lm(horas ~ km, data = datos_regr)
+summary(regr_horas_km)
+
+```
+Ordenada al origen 3.5: el tiempo mínimo que requiere cualquier salida es de 3 horas y media; Pendiente 0.34: por cada kilómetro de recorrido que se agrega a una salida, se extiende la salida en promedio en 20'. EL R2 de esto es 0.39 debido a la dispersión de los datos.Sin embargo el modelo lineal describe bien la tendencia. El rango de amplitud de la cantidad de horas para diferentes kilometrajes recorridos es de un máximo de 7 horas.
+
+Con esto queda establecido que es razonable a grandes rasgos usar CPUEh (capturas respecto al tiempo) como un proxy adecuado. A continuación calculo entonces un índice de captura por unidad de esfuerzo en relación a las horas de las salidas.
+
+```{r}
+datos %>% mutate(CPUEh = cantidad/horas)
+```
+Calculado el índice, tomo diferentes granos temporales para analizar en el tiempo.
+CPUEh mensual, trimestral y anual.
+
+```{r}
+# mensual
+datos.mes.h <- datos %>% 
+  group_by(y,m, zona) %>% 
+  summarise(cantmensual = sum(cantidad, na.rm = T),
+            hmensual = sum(horas,na.rm = TRUE)) %>% 
+  filter(hmensual != 0) %>% 
+  mutate(CPUEmensual = cantmensual/hmensual) %>%
+  mutate(fecham = make_date(y,m)) %>% 
+  mutate(etapa = if_else(y <= 2020, "pre","post"))
+
+ggplot(datos.mes.h,aes(x = fecham, y = CPUEmensual, col= etapa))+
+  geom_point()+
+  geom_smooth(data=subset(datos.mes.h, y <= 2020),method="lm", se=T)+
+  theme_bw()+
+  theme(legend.position="none")+
+  facet_wrap(~zona)+
+  ggtitle("CPUE mensual")
+  
+
+# trimestral
+datos.trim.h <- datos %>% 
+  mutate(trim = case_when(m <= 3 ~ "1",
+                          m <= 6 ~ "2",
+                          m <= 9 ~ "3",
+                          m <= 12 ~ "4")) %>% 
+  group_by(y,trim, zona) %>% 
+  summarise(canttrim = sum(cantidad, na.rm = T),
+            htrim = sum(horas,na.rm = TRUE)) %>% 
+  filter(htrim != 0) %>% 
+  mutate(CPUEtrim = canttrim/htrim) %>%
+  mutate(fechat = make_date(y,trim)) %>% 
+  mutate(etapa = if_else(y <= 2020, "pre","post"))
+
+ggplot(datos.trim.h,aes(x = fechat, y = CPUEtrim, col= etapa))+
+  geom_point()+
+  geom_smooth(data=subset(datos.trim.h, y <= 2020),method="lm", se=T)+
+  theme_bw()+
+  theme(legend.position="none")+
+  facet_wrap(~zona)+
+  ggtitle("CPUE trimestral")
+
+# anual
+datos.year.h <- datos %>% 
+  group_by(y, zona) %>% 
+  summarise(cantanual = sum(cantidad, na.rm = T),
+            hanual = sum(horas,na.rm = TRUE)) %>% 
+  filter(hanual != 0) %>% 
+  mutate(CPUEanual = cantanual/hanual) %>%
+  mutate(fechay = make_date(y)) %>% 
+  mutate(etapa = if_else(y <= 2020, "pre","post"))
+
+ggplot(datos.year.h,aes(x = fechay, y = CPUEanual, col= etapa))+
+  geom_point()+
+  geom_smooth(data=subset(datos.year.h, y <= 2020),method="lm", se=F)+
+  theme_bw()+
+  theme(legend.position="none")+
+  facet_wrap(~zona)+
+  ggtitle("CPUE anual")
+```
+
+SOlo en Brazo Rico y Brazo Sur Oeste hay un seguimiento suficiente como para interpretar la tendencia. En ambos casos se observa que la tendencia general es una abundancia que se sostiene. Si bien las regresiones lineales tienen pendientes negativas en el caso del CPUEh mensual (más o menos visibles cuando se integran los datos a trimestres o años), en el caso de Brazo Rico es demasiado leve, lo que no implicaría una tendencia real en los datos aproximados a partir del CPUEh; y se sostiene por un único dato influyente en el caso del Brazo Sur Oeste. Lo que sí puede entenderse de ambos es que no hay un aumento de la captura por unidad de esfuerzo en horas en el tiempo a pesar de que se observan más ejemplares en terreno siempre, y también es habitual que al menos uno o dos ejemplares del grupo escapen. Esto indica una saturación en la capacidad de abatimiento de baguales. Es decir, que en las jornadas se alcanza el máximo de capturas que es posible dado el tiempo empleado. En este nivel de saturación el índice de CPUEh no refleja la abundancia de animales, sino solo la capacidad máxima de captura. La población podría tener una tasa de crecimiento intrínseca positiva, nula o negativa pero aún en valores de abundancia neta altos, y eso no se vería reflejado por este índice, ya que midiendo con este índice, la capacidad de captura del programa está saturada.
+
+La relación teórica entre un índice CPUE y la abundancia de una población, supone una relación que puede aproximarse a la linealidad con alguna proporcionalidad, dependiente de las condiciones en las que se aplica el índice, y que alcanzaría más o menos gradualmente un valor de saturación, como en una función hiperbólica. La validez de la relación a abundancias bajas debería ser establecida empíricamente.  La validez del índice, entonces, estaría acotada al rango de valores de abundancia de la población para los que se comporta linealmente. A abundancias menores o mayores, el índice carece de sensibilidad para reflejar los cambios de abundancia de la población. Se estima que lo que ocurre en el área es justamente esto: los valores de abundancia de los baguales son mayores al valor máximo de discriminación del índice utilizado.
+
+Durante 2021 se trabajó en una reducción de la toma de datos a lo mínimo indispensable, de manera de restringir lo menos posible el esfuerzo de la salida a actividades que no impliquen el abatimiento de animales. Los resultados están a la vista en los puntos rosados de las figuras anteriores que corresponden a las salidas ocurridas desde julio de 2021 en adelante, cuando se implementó el nuevo registro. En todos los casos se observa que la captura por unidad de esfuerzo en horas logró un resultado mayor que en el período anterior. Este cambio en los valores obtenidos no refleja un cambio en la abundancia de la población, que como dijimos no es sensible a los niveles de esfuerzo realizado, sino al hecho de haber superado el umbral de saturación. Si en esta nueva etapa el índice de CPUE medido en horas es sensible a la abundancia poblacional, recién podrá saberse cuando se transite un período de extracción suficiente, que acumule suficientes horas de extracción.  
+
+Es importante comprender que el índice de captura por unidad de esfuerzo como medida de abundancia relativa de la población, como todos los índices, es válido solo frente a ciertas condiciones en las que sea capaz de variar en alguna relación de proporcionalidad con la abundancia real de la población. El esfuerzo de caza medido en horas de salidas realizadas hasta 2021 resultó insuficiente para que este índice sea capaz de acompañar las variaciones de abundancia. Para que en el futuro sea posible llevar un monitoreo de la abundancia de baguales en estas áreas es necesario reducir el tiempo fijo que lleva el registro de cada ejemplar, afinar la toma del dato de cantidad de horas de modo que refleje estrictamente el tiempo destinado a la actividad de caza, y aumentar las horas de extracción. 
+
+Antes de avanzar, evalúo la variación en el esfuerzo de caza a lo largo de los años y zonas.
+```{r}
+datos_horas <- datos %>% 
+  group_by(y, zona) %>% 
+  summarise(Total = sum(horas, na.rm=T),
+            n = n(),
+            rel=Total/n)
+
+ggplot(datos_horas, aes(y,Total))+
+         geom_col()+
+  theme_bw()+
+  facet_wrap(~zona)
+
+
+```
+
+De acuerdo a lo que viene a continuación, y al menos para una correcta descripción de la demografía de la población, se ve necesario acumular unas 150 horas de trabajo de extracción. Según los registros, el promedio de longitud de las salidas por zona y a lo largo de los años fue:
+```{r}
+ggplot(datos_horas, aes(y,rel))+
+         geom_col()+
+  theme_bw()+
+  facet_wrap(~zona)
+```
+Lo que deja un valor medio bastante homogéneo de 5 horas la salida. 
+
+## Caracterización de ejemplares abatidos
+```{r}
+datos_ind <- read_csv("datos_ind_20.csv", col_names = T,
+                      na = c("NA", ""),
+                      col_types = cols(.default = "?",
+                                   edad = col_factor(levels = c("1","2","3","4","5")),
+                                   dientes = col_factor(levels = NULL),
+                                   sexo = col_factor(levels = c("H","M")),
+                                   nutri = col_factor(levels = NULL),
+                                   zona = col_factor(levels = c("BR","BSO","BSE","MSC","BSS","LF"))
+                      )
+) %>% 
+  select(-extrmuni, -abertura, -fotogral, -fotodent, -WPT)
+
+```
+
+A partir de los datos sobre edad y sexo de los baguales abatidos entre 2016 y 2020, y asumiendo que la captura es una muestra representativa de la población, es posible caracterizar demográficamente a la población de acuerdo a la proporción de sexos y estructura de primeras edades.Dibujo la general.
+```{r}
+ggplot(datos_ind,aes(x=edad, fill=sexo))+
+  geom_bar(position = "dodge")+
+  labs(y= "frecuencia", x = "altura (m)")+
+  facet_wrap(~zona)+
+  theme_light()
+```
+
+Ahora la quiero ver temporal, si ha cambiado la proporción de sexos o de edades en los años de extracción.
+```{r}
+ggplot(datos_ind,aes(x=edad, fill=sexo))+
+  geom_bar(position = "dodge")+
+  labs(y= "frecuencia", x = "altura (m)")+
+  facet_grid(y~zona)+
+  theme_light()
+```
+Si la quiero ver como pirámide poblacional
+```{r}
+datos_ind_sex <- datos_ind %>%
+  group_by(y,sexo,edad, zona) %>% 
+  filter(zona == "BR"| zona == "BSO") %>% 
+  summarise(Total = n()) %>% 
+  mutate(
+    Pob = ifelse(sexo == "H", -Total,Total))
+
+ggplot(datos_ind_sex,aes(x = edad,y = Pob, fill = sexo)) +
+    geom_col(position = "stack", alpha = 0.6) + 
+    coord_flip() +
+    scale_fill_manual(values = c("red", "blue")) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      plot.caption = element_text(hjust = 0)) +
+    scale_y_continuous(labels = abs) +
+    labs(y = "Cantidad",
+         x = "edad",
+         title = "Pirámide")+
+  facet_grid(y~zona)
+
+```
+Lo que puede observarse en Brazo Rico es que entre 2016 y 2019 que se sostuvieron los niveles de extracción, si bien la abundancia de la población pudo no haber disminuido, la respuesta demográfica es evidente en la modificación de la pirámide de la mayor cantidad de adultos a estar cada vez menos representada esa edad, y también se observa la disminución de la representación de reclutas de primeras edades, además de una relación más armónica entre las cantidades de las edades 1, 2, 3 y 4 años. Esto afirma que existe un efecto de largo plazo en la extracción de baguales, no inmediato, que recién impactará en la población varios años después. Para el área Brazo Sur Oeste no existe información suficiente para evaluar si este efecto ocurre también.
+
+
