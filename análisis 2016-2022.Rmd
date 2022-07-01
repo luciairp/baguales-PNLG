@@ -12,16 +12,18 @@ knitr::opts_chunk$set(echo = TRUE)
 # Problemas con datos
 - Faltan cargar tracks de todas las salidas desde 2021. Sin el dato del track es imposible recuperar la información de km recorridos, que es el mejor indicador de esfuerzo hasta ahora.Por un lado está el problema del dato faltante, pero por otro lado está la dificultad de digitalizar este dato al mismo tiempo que los de los abatimientos. ¿Agregar campo en la planilla? Por más que no lo completen, para que salte cartel que diga "cargar km recorridos o subir archivo gpx a carpeta correspondiente". ¿Hay otra manera de registrar el esfuerzo/duración/longitud recorrida en la salida? ¿criterios para salida larga/salida corta?
 - El tiempo que dura la recorrida se registra mal en la planilla, hay que cambiar el formato hora por el valor en horas decimales de la diferencia entre inicio y fin de actividad. O eliminar columna que calcula diferencia (así estaba antes creo, no sé bien qué pasó, es el formato automático del excel para horas).
+- En la planilla 2021 las categorías de animales que se están regitrando son: vaca/toro (que separa sexo de edad adulta, lo que sería la categoría de edad 5 del registro hasta 2020), vaquillona/novillo (que separa sexo en cierta edad, de más de 1 año pero desconozco hasta cuándo le dicen así), y ternero  (que habla de ejemplares jóvenes de hasta un año, pero que no distingue sexo). Sobre esto hay que definir la equivalencia aproximada con la forma anterior de registro de la información, y evaluar si puede distinguirse entre terneros macho y hembra.
+- Me falta entender un poco más sobre las decisiones que podrían tomarse en terreno cuando se accede a un grupo de baguales de composición variada, qué define a qué ejemplares eligen abatir prioritariamente. Idealmente para el objetivo de control lo más eficiente sería eliminar hembras adultas, sin embargo desconozco si es efectivamente lo que hacen. La cuestión acá es que si hay criterios para la elección que no tienen que ver con la oportunidad/cercanía/factibilidad sino con el peso/edad/aspecto del animal entonces es diferente la interpretación que debe hacerse de la cosecha. ¿Es la captura una buena descripción de la población, representa a la población? Asumo que sí, pero si no es así las interpretaciones pueden ser diferentes.
 
-# Resultados del plan de extracción
-
-## Extracción general
 ```{r echo=FALSE}
 library(tidyverse)
 library(lubridate)
 library(janitor)
+library(grid)
 ```
+# Resultados del plan de extracción
 
+## Extracción general
 ```{r echo=FALSE}
 datos <- read_csv("datos_salida.csv", 
                   col_types = cols(.default = "?",
@@ -40,6 +42,8 @@ cor_horas_km <- ggplot(data = datos,aes(x = km, y = horas))+
   geom_smooth(method="lm", se=F)+
   xlim(c(0,20))
 
+cor_horas_km
+
 ```
 Elimino un dato que está mal calculado (35 kilómetros y 4 horas).
 No hace falta sufrir por el kilometraje recorrido quizás, siempre y cuando el tiempo hable siempre del esfuerzo de captura... El riesgo está en que el tiempo registrado hablo del inicio y final de la actividad en terreno, y que esté sumando tiempo de espera de embarcación, o de regreso al punto inicial, sin actividad de caza. En todo caso sería posible a futuro ajustar que el tiempo registrado refleje este tiempo y no otro. Difícil pero no imposible. 
@@ -57,6 +61,38 @@ summary(regr_horas_km)
 
 ```
 Ordenada al origen 3.5: el tiempo mínimo que requiere cualquier salida es de 3 horas y media; Pendiente 0.34: por cada kilómetro de recorrido que se agrega a una salida, se extiende la salida en promedio en 20'. EL R2 de esto es 0.39 debido a la dispersión de los datos.Sin embargo el modelo lineal describe bien la tendencia. El rango de amplitud de la cantidad de horas para diferentes kilometrajes recorridos es de un máximo de 7 horas.
+
+Considerando que las diferentes zonas de trabajo implican esfuerzos logísticos diferentes, y eso podría impactar en la relación horas vs kilómetros, exploro esa relación distinguiendo las zonas:
+```{r}
+cor_horas_km_zona <- ggplot(data = datos,aes(x = km, y = horas, col = cantidad))+
+  geom_point()+
+  geom_smooth(method="lm", se=F)+
+  xlim(c(0,20))+
+  facet_wrap(~zona)+
+  scale_colour_gradient(low="blue4", high = "darkred")
+
+cor_horas_km_zona
+```
+Se ve que las tendencias en las zonas de Brazo Rico y Brazo Sur Oeste (donde más se trabajó) se conservan, y que el éxito de captura no siempre se asocia a salida más largas. Los modelos lineales de estas dos zonas dan valores equivalentes al modelo general que contiene todas las zonas.
+
+```{r}
+datos_regr_BR <- datos_regr %>% 
+  filter(zona == "BR") 
+regr_horas_km_BR <- lm(horas ~ km, data = datos_regr_BR)
+summary(regr_horas_km_BR)
+
+datos_regr_BSO <- datos_regr %>% 
+  filter(zona == "BSO") 
+regr_horas_km_BSO <- lm(horas ~ km, data = datos_regr_BSO)
+summary(regr_horas_km_BSO)
+
+
+tabla <- tibble(regr_horas_km_BR$coefficients,regr_horas_km_BSO$coefficients)
+tabla
+```
+Para BR: Ordenada al origen 3.13, pendiente 0.38
+Para BSO: Ordenada al origen 4.93, pendiente 0.24
+Es decir que las salidas a BSO tienen en promedio un mínimo mayor (casi 5 horas contra 3 en BR). Respecto al esfuerzo de recorrer distancias mayores, la pendiente no muestra casi diferencias: en promedio cada kilómetro recorrido aumenta 15' en BSO y 20' en BR.
 
 Con esto queda establecido que es razonable a grandes rasgos usar CPUEh (capturas respecto al tiempo) como un proxy adecuado. A continuación calculo entonces un índice de captura por unidad de esfuerzo en relación a las horas de las salidas.
 
@@ -140,25 +176,27 @@ Antes de avanzar, evalúo la variación en el esfuerzo de caza a lo largo de los
 datos_horas <- datos %>% 
   group_by(y, zona) %>% 
   summarise(Total = sum(horas, na.rm=T),
+            HorasNA = sum(is.na(horas)),
             n = n(),
             rel=Total/n)
 
-ggplot(datos_horas, aes(y,Total))+
-         geom_col()+
+ggplot(datos_horas, aes(x=y))+
+  geom_col(aes(x = y, y = Total))+
+  geom_point(aes(x= , y = HorasNA*100))+
   theme_bw()+
-  facet_wrap(~zona)
-
+  facet_wrap(~zona)+
+  scale_y_continuous(name = "Total horas", sec.axis = sec_axis(~./100, name = "Datos faltantes"))
 
 ```
-
-De acuerdo a lo que viene a continuación, y al menos para una correcta descripción de la demografía de la población, se ve necesario acumular unas 150 horas de trabajo de extracción. Según los registros, el promedio de longitud de las salidas por zona y a lo largo de los años fue:
+Las barras se refieren al eje de la izquierda, horas acumuladas de salidas, y los puntos al eje de la derecha, sobre cantidad de salidas para las que no se pudo registrar su duración.
+Para una correcta descripción de la demografía de la población, se verá a continuación, parece necesario acumular al menos 100 horas de trabajo de extracción. Cómo se comportaron en el tiempo las duraciones de las salidas se observa en los diagramas de caja discriminados por zona:
 ```{r}
-ggplot(datos_horas, aes(y,rel))+
-         geom_col()+
+ggplot(datos,aes(horas))+
+  geom_boxplot()+
   theme_bw()+
-  facet_wrap(~zona)
+  facet_grid(y~zona)
+
 ```
-Lo que deja un valor medio bastante homogéneo de 5 horas la salida. 
 
 ## Caracterización de ejemplares abatidos
 ```{r}
@@ -169,7 +207,8 @@ datos_ind <- read_csv("datos_ind_20.csv", col_names = T,
                                    dientes = col_factor(levels = NULL),
                                    sexo = col_factor(levels = c("H","M")),
                                    nutri = col_factor(levels = NULL),
-                                   zona = col_factor(levels = c("BR","BSO","BSE","MSC","BSS","LF"))
+                                   zona = col_factor(levels = c("BR","BSO","BSE","MSC","BSS","LF")),
+                                   prenez = col_factor(levels = c("si","no"))
                       )
 ) %>% 
   select(-extrmuni, -abertura, -fotogral, -fotodent, -WPT)
@@ -198,9 +237,9 @@ Si la quiero ver como pirámide poblacional
 datos_ind_sex <- datos_ind %>%
   group_by(y,sexo,edad, zona) %>% 
   filter(zona == "BR"| zona == "BSO") %>% 
+  filter(edad != "NA") %>% 
   summarise(Total = n()) %>% 
-  mutate(
-    Pob = ifelse(sexo == "H", -Total,Total))
+  mutate(Pob = ifelse(sexo == "H", -Total,Total))
 
 ggplot(datos_ind_sex,aes(x = edad,y = Pob, fill = sexo)) +
     geom_col(position = "stack", alpha = 0.6) + 
@@ -217,6 +256,86 @@ ggplot(datos_ind_sex,aes(x = edad,y = Pob, fill = sexo)) +
   facet_grid(y~zona)
 
 ```
-Lo que puede observarse en Brazo Rico es que entre 2016 y 2019 que se sostuvieron los niveles de extracción, si bien la abundancia de la población pudo no haber disminuido, la respuesta demográfica es evidente en la modificación de la pirámide de la mayor cantidad de adultos a estar cada vez menos representada esa edad, y también se observa la disminución de la representación de reclutas de primeras edades, además de una relación más armónica entre las cantidades de las edades 1, 2, 3 y 4 años. Esto afirma que existe un efecto de largo plazo en la extracción de baguales, no inmediato, que recién impactará en la población varios años después. Para el área Brazo Sur Oeste no existe información suficiente para evaluar si este efecto ocurre también.
+Lo que puede observarse en Brazo Rico es que entre 2016 y 2019 que se sostuvieron los niveles de extracción, si bien la abundancia de la población pudo no haber disminuido, la respuesta demográfica es evidente en la modificación de la pirámide de la mayor cantidad de adultos a estar cada vez menos representada esa edad, y también se observa la disminución de la representación de reclutas de primeras edades, además de una relación más armónica entre las cantidades de las edades 1, 2, 3 y 4 años. Esto afirma que existe un efecto de largo plazo en la extracción de baguales, no inmediato, que recién impactará en la población varios años después. Para el área Brazo Sur Oeste no existe información suficiente para evaluar si este efecto ocurre también.La cantidad de horas destinadas a caza los años analizados fue 
+
+Por último reviso los datos sobre preñeces:
+```{r}
+datos_pregn <- datos_ind %>% 
+  filter(sexo == "H") %>% 
+  group_by(y, zona, prenez) %>% 
+  summarise(
+    n = n()) %>% 
+  pivot_wider(names_from = "prenez",values_from = "n") %>% 
+  mutate(
+    H = sum(si, no, na.rm = T),
+    Hpregnprop = si/H) %>% 
+  filter(H > 1)
+
+f1 <- ggplot(datos_pregn, aes(x= y))+
+  geom_col(aes(y = Hpregnprop))+
+  facet_wrap(~zona)+
+  theme_bw()+
+  scale_y_continuous(name = "Prop hembras preñadas")
+  
+f2 <- ggplot(datos_pregn, aes(x = y, y = H))+
+  geom_line(size=1.3, col = "darkgrey")+
+  facet_wrap(~zona)+
+  theme_bw()+
+  scale_y_continuous(name = "Hembras cazadas")
+  
+grid.newpage()
+grid.draw(rbind(ggplotGrob(f2), ggplotGrob(f1), size = "last"))
+
+```
+Si bien en las dos áreas la tendencia es a una mayor proporción de hembras cazadas preñadas, la interpretación debe ser conunta con la cantidad neta de hembras cazadas, ya que ese número es realmente bajo en el caso de los años con proporciones de preñez mayores para Brazo Rico. Teniendo en cuenta solo los años 2016 a 2018, de mayor cantidad de hembras cosechadas, la preñez parece estar establecida en valores cercanos al 25%. Para el caso de Brazo Sur Oeste la situación es diferente, ya que el año mejor representado en cantidad de hembras cosechadas tuvo una preñez del 50%, lo que coincide con una población en franco crecimiento, evidente en la pirámide poblacional y en la importancia absoluta de las primeras edades.
+
+## Para último año y medio
+```{r}
+datos_ind_21 <- read_csv("datos_ind_21.csv", col_names = T,
+                      na = c("NA", ""),
+                      col_types = cols(tipo = col_factor(levels = c("vaca","toro","vaquillona","novillo","ternero")),
+                                   nutri = col_factor(levels = NULL),
+                                   zona = col_factor(levels = c("BR","BSO","BSE","MSC","BSS","LF"))
+                      )
+) %>% 
+  mutate(
+    sexo =  if_else(tipo == "vaca"|tipo =="vaquillona", "H",if_else(tipo == "ternero", "H","M")),
+    edad = if_else(tipo == "ternero","ternero",
+                   if_else(tipo=="vaquillona"|tipo=="novillo", "joven","adulto")))
+
+```
+
+Pirámide poblacional en base a abatimiento:
+(Todos los terneros asignados a "hembra")
+```{r}
+datos_ind_21_sex <- datos_ind_21 %>%
+  group_by(y,sexo,edad, zona) %>% 
+  filter(zona == "BR"| zona == "BSO") %>% 
+  summarise(Total = n()) %>% 
+  mutate(Pob = ifelse(sexo == "H", -Total,Total))
+
+ggplot(datos_ind_21_sex,aes(x = edad,y = Pob, fill = sexo)) +
+    geom_col(position = "stack", alpha = 0.6) + 
+    coord_flip() +
+  scale_fill_manual(values = c("red", "blue")) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      plot.caption = element_text(hjust = 0)) +
+    scale_y_continuous(labels = abs, limits = c(-20,20))+
+  scale_x_discrete(limits=rev)+
+       labs(y = "Cantidad",
+         x = "edad",
+         title = "Pirámide")+
+        facet_grid(y~zona)
+
+```
+
+Las cantidades extraídas son escasas, se corresponden con los años que menor cantidad de horas acumuladas logró el programa, muy por debajo de las 100 que se veían recomendables para lograr una buena descripción de la población en edades y sexos. Por lo que estas figuras que completan la serie temporal con las del período 2016-2020, deben tomarse con cautela.
 
 
+# Algunas conclusiones
+- La duración de la jornada de caza podría ser una medida suficiente para registrar el esfuerzo de captura que permita construir el índice CPUE, siempre y cuando la cantidad de horas destinadas a la caza sea superior a las 100 horas anuales. Ese esfuerzo sería suficiente para lograr una caracterización adecuada de la estructura demográfica de la población. No sabemos aún si ese esfuerzo sería suficiente para entrar en el rango de valores de abundancia en los que sería sensible a sus cambios y podría funcionar como un verdadero índice de abundancia. Esto solo se logrará si se alcanzan esfuerzos de caza mayores a los logrados hasta ahora.
+- La descripción demográfica solo es posible en algunas áreas donde la cantidad de horas de caza fue sostenida y alta. Se observa que frente a la cosecha sostenida la población responde con variaciones en su composición de proporción de adultos -en particular hembras- y de jóvenes, describiendo una población con menos oportunidad de sostener una tasa de crecimiento positiva. Esto señala que es factible lograr un impacto suficientemente fuerte en la población tal que lo lleve a una tasa de crecimiento intrínseca negativa. Sin embargo, los cambios son graduales, solo se perciben cuando la cantidad de horas destinadas al programa supera las 100 anuales por zona, y este esfuerzo es sostenido en el tiempo por períodos de años. Es posible que los efectos tomen varios años para poder notarse a simple vista en terreno ya que la cantidad de ejemplares reproductivos podría modifcarse sin modificarse la abundancia.
+- Patrón similar puede observarse respecto a las preñeces. Este dato dejó de tomarse desde 2021 por su dificultad en terreno y el riesgo sanitario de manipulación de los ejemplares abatidos.
+- Esta información combinada pone de manifiesto que es necesario incrementar el esfuerzo de caza en todas las áreas, y asegurar su sostenimiento por períodos largos. Las interrupciones a la cosecha pueden impactar positivamente en la abundancia con desfases temporales de varios años, por lo que es posible que aún no se perciba el efecto de la disminución de la caza durante los años 2020 y 2021.
