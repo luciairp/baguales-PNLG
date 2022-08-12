@@ -72,6 +72,21 @@ cor_horas_km_zona <- ggplot(data = datos,aes(x = km, y = horas, col = cantidad))
   scale_colour_gradient(low="blue4", high = "darkred")
 
 cor_horas_km_zona
+
+datos_BRBSO <- datos %>% 
+  filter(zona == "BR"|zona == "BSO")  
+  
+cor_horas_km_BRBSO <- ggplot(data = datos_BRBSO,aes(x = km, y = horas, col = cantidad))+
+  geom_point()+
+  geom_smooth(method="lm", se=F)+
+  xlim(c(0,20))+
+  facet_wrap(~zona)+
+  scale_colour_gradient(low="blue4", high = "darkred")+
+  theme_light()
+
+cor_horas_km_BRBSO
+
+
 ```
 Se ve que las tendencias en las zonas de Brazo Rico y Brazo Sur Oeste (donde más se trabajó) se conservan, y que el éxito de captura no siempre se asocia a salida más largas. Los modelos lineales de estas dos zonas dan valores equivalentes al modelo general que contiene todas las zonas.
 
@@ -144,6 +159,20 @@ ggplot(datos.trim.h,aes(x = fechat, y = CPUEtrim, col= etapa))+
   facet_wrap(~zona)+
   ggtitle("CPUE trimestral")
 
+# trim BR y BSO
+
+datos.trim.h.BRBSO <- datos.trim.h %>% 
+  filter(zona == "BR"|zona == "BSO")
+
+ggplot(datos.trim.h.BRBSO,aes(x = fechat, y = CPUEtrim, col= etapa))+
+  geom_point()+
+  geom_smooth(data=subset(datos.trim.h.BRBSO, y <= 2020),method="lm", se=T)+
+  theme_bw()+
+  theme(legend.position="none")+
+  facet_wrap(~zona)+
+  ggtitle("CPUE trimestral")
+
+
 # anual
 datos.year.h <- datos %>% 
   group_by(y, zona) %>% 
@@ -179,6 +208,8 @@ datos_horas <- datos %>%
             HorasNA = sum(is.na(horas)),
             n = n(),
             rel=Total/n)
+datos_horas_BRBSO <- datos_horas %>% 
+  filter(zona == "BR"|zona == "BSO")
 
 ggplot(datos_horas, aes(x=y))+
   geom_col(aes(x = y, y = Total))+
@@ -186,6 +217,14 @@ ggplot(datos_horas, aes(x=y))+
   theme_bw()+
   facet_wrap(~zona)+
   scale_y_continuous(name = "Total horas", sec.axis = sec_axis(~./100, name = "Datos faltantes"))
+
+ggplot(datos_horas_BRBSO, aes(x=y))+
+  geom_col(aes(x = y, y = Total))+
+  geom_point(aes(x= , y = HorasNA*100))+
+  theme_bw()+
+  facet_wrap(~zona)+
+  scale_y_continuous(name = "Total horas", sec.axis = sec_axis(~./100, name = "Datos faltantes"))
+
 
 ```
 Las barras se refieren al eje de la izquierda, horas acumuladas de salidas, y los puntos al eje de la derecha, sobre cantidad de salidas para las que no se pudo registrar su duración.
