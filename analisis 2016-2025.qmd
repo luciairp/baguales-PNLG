@@ -1,0 +1,154 @@
+---
+title: "baguales 19-25"
+format: docx
+editor: visual
+---
+
+## Análisis extracción baguales PNLG 2016-2025
+
+datos 2016 hasta febrero 2025
+
+```{r echo=FALSE}
+library(tidyverse)
+library(lubridate)
+library(janitor)
+library(grid)
+```
+
+```{r echo=FALSE}
+datos <- read_csv("datos_salida_022025.csv", 
+                  col_types = cols(.default = "?",
+                                   m = col_double(),
+                                   d = col_double(),
+                                   horas = col_double(),
+                                   zona = col_factor(levels = c("BR","BSO","BSE","MSC","BSS","LF")),
+                                   nutri = col_factor(levels = c("Desnutrido","Regular","Muy Bueno", "Desconocido","No corresponde")))
+                  ) %>% 
+  remove_empty(which = "rows")
+```
+
+```{r}
+datos <- datos %>% 
+  #mutate(CPUEh = cantidad/horas) %>% 
+    mutate(zona2 = fct_recode(zona, "BR" = "BR",
+                          "BS" = "BSO",
+                          "BS" = "BSS",
+                          "BS" = "BSE",
+                          "LF" = "LF", "MSC" = "MSC"))
+  
+```
+
+Miro esfuerzo de horas de caza
+
+```{r}
+datos_horas <- datos %>% 
+  group_by(y, zona2) %>% 
+  summarise(Total = sum(horas, na.rm=T),
+            HorasNA = sum(is.na(horas)),
+            n = n(),
+            rel=Total/n)
+datos_horas_BRBS <- datos_horas %>% 
+  filter(zona2 == "BR"|zona2 == "BS")
+
+ggplot(datos_horas, aes(x=y))+
+  geom_col(aes(x = y, y = Total))+
+  geom_point(aes(x= , y = HorasNA*100))+
+  theme_bw()+
+  facet_wrap(~zona2)+
+  scale_y_continuous(name = "Total horas", sec.axis = sec_axis(~./100, name = "Datos faltantes"))
+
+ggplot(datos_horas_BRBSO, aes(x=y))+
+  geom_col(aes(x = y, y = Total))+
+  geom_point(aes(x= , y = HorasNA*100))+
+  theme_bw()+
+  facet_wrap(~zona)+
+  scale_y_continuous(name = "Total horas", sec.axis = sec_axis(~./100, name = "Datos faltantes"))
+
+
+```
+
+Miro CPUE en base a esfuerzo en horas para granos mensual, trimestral y anual
+
+```{r}
+# mensual
+datos.mes.h <- datos %>% 
+  group_by(y,m, zona2) %>% 
+  summarise(cantmensual = sum(cantidad, na.rm = T),
+            hmensual = sum(horas,na.rm = TRUE)) %>% 
+  filter(hmensual != 0) %>% 
+  mutate(CPUEmensual = cantmensual/hmensual) %>%
+  mutate(fecham = make_date(y,m)) %>% 
+  mutate(etapa = if_else(y <= 2020, "pre","post"))
+
+ggplot(datos.mes.h,aes(x = fecham, y = CPUEmensual, col= etapa))+
+  geom_point()+
+  geom_smooth(data=subset(datos.mes.h, y <= 2020),method="lm", se=T)+
+  theme_bw()+
+  theme(legend.position="none")+
+  facet_wrap(~zona2)+
+  ggtitle("CPUE mensual")
+  
+```
+
+trimestral
+
+```{r}
+# trimestral
+datos.trim.h <- datos %>% 
+  mutate(trim = case_when(m <= 3 ~ "1",
+                          m <= 6 ~ "2",
+                          m <= 9 ~ "3",
+                          m <= 12 ~ "4")) %>% 
+  group_by(y,trim, zona2) %>% 
+  summarise(canttrim = sum(cantidad, na.rm = T),
+            htrim = sum(horas,na.rm = TRUE)) %>% 
+  filter(htrim != 0) %>% 
+  mutate(CPUEtrim = canttrim/htrim) %>%
+  mutate(fechat = make_date(y,trim)) %>% 
+  mutate(etapa = if_else(y <= 2020, "pre","post"))
+
+ggplot(datos.trim.h,aes(x = fechat, y = CPUEtrim, col= etapa))+
+  geom_point()+
+  geom_smooth(data=subset(datos.trim.h, y <= 2020),method="lm", se=T)+
+  theme_bw()+
+  theme(legend.position="none")+
+  facet_wrap(~zona2)+
+  ggtitle("CPUE trimestral")
+
+# trim BR y BS
+
+datos.trim.h.BRBS <- datos.trim.h %>% 
+  filter(zona2 == "BR"|zona2 == "BS")
+
+ggplot(datos.trim.h.BRBS,aes(x = fechat, y = CPUEtrim, col= etapa))+
+  geom_point()+
+  geom_smooth(data=subset(datos.trim.h.BRBSO, y <= 2020),method="lm", se=T)+
+  theme_bw()+
+  theme(legend.position="none")+
+  facet_wrap(~zona2)+
+  ggtitle("CPUE trimestral")
+
+
+```
+
+Anual
+
+```{r}
+# anual
+datos.year.h <- datos %>% 
+  group_by(y, zona2) %>% 
+  summarise(cantanual = sum(cantidad, na.rm = T),
+            hanual = sum(horas,na.rm = TRUE)) %>% 
+  filter(hanual != 0) %>% 
+  mutate(CPUEanual = cantanual/hanual) %>%
+  mutate(fechay = make_date(y)) %>% 
+  mutate(etapa = if_else(y <= 2020, "pre","post"))
+
+ggplot(datos.year.h,aes(x = fechay, y = CPUEanual, col= etapa))+
+  geom_point()+
+  geom_smooth(data=subset(datos.year.h, y <= 2020),method="lm", se=F)+
+  theme_bw()+
+  theme(legend.position="none")+
+  facet_wrap(~zona2)+
+  ggtitle("CPUE anual")
+```
