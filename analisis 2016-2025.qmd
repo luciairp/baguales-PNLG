@@ -1,12 +1,12 @@
 ---
-title: "baguales 19-25"
+title: "baguales 19-26"
 format: docx
 editor: visual
 ---
 
-## Análisis extracción baguales PNLG 2016-2025
+## Análisis extracción baguales PNLG 2016-2026
 
-datos 2016 hasta febrero 2025
+datos 2016 hasta febrero 2026
 
 ```{r echo=FALSE}
 library(tidyverse)
@@ -16,7 +16,7 @@ library(grid)
 ```
 
 ```{r echo=FALSE}
-datos <- read_csv("datos_salida_022025.csv", 
+datos <- read_csv("datos_salida_012026.csv", 
                   col_types = cols(.default = "?",
                                    m = col_double(),
                                    d = col_double(),
@@ -55,16 +55,100 @@ ggplot(datos_horas, aes(x=y))+
   geom_point(aes(x= , y = HorasNA*100))+
   theme_bw()+
   facet_wrap(~zona2)+
-  scale_y_continuous(name = "Total horas", sec.axis = sec_axis(~./100, name = "Datos faltantes"))
+  scale_y_continuous(name = "Total horas", sec.axis = sec_axis(~./100, name = "Datos faltantes"))+
+ scale_x_continuous(breaks = scales::pretty_breaks(n=10))
 
-ggplot(datos_horas_BRBSO, aes(x=y))+
+ggplot(datos_horas_BRBS, aes(x=y))+
   geom_col(aes(x = y, y = Total))+
-  geom_point(aes(x= , y = HorasNA*100))+
+  geom_point(aes(x= , y = HorasNA*100), col = "orange3")+
   theme_bw()+
-  facet_wrap(~zona)+
-  scale_y_continuous(name = "Total horas", sec.axis = sec_axis(~./100, name = "Datos faltantes"))
+  theme(axis.text.x = element_text(angle = 45,vjust=1, hjust=1))+
+  facet_wrap(~zona2)+
+  scale_y_continuous(name = "Total horas", sec.axis = sec_axis(~./100, name = "Datos faltantes"))+
+  scale_x_continuous(breaks = scales::pretty_breaks(n=10))
 
 
+```
+
+Miro cantidades totales
+
+```{r}
+totales <- datos %>% 
+  group_by(zona2,y) %>% 
+  summarise(
+    n = sum(cantidad)
+  )
+
+totales_tipo_26 <- datos_ind_26 %>% 
+  filter(zona == "BR"| zona == "BS") %>% 
+  group_by(zona,tipo) %>% 
+  summarise(
+    n = n()
+  )
+
+totales_26 <- datos_ind_26 %>% 
+  filter(zona == "BR"| zona == "BS") %>% 
+  group_by(zona) %>% 
+  summarise(
+    n = n()
+  )
+#BR 246 
+#BS 84
+  
+datos_ind <- read_csv("datos_ind_20.csv", col_names = T,
+                      na = c("NA", ""),
+                      col_types = cols(.default = "?",
+                                   edad = col_factor(levels = c("1","2","3","4","5")),
+                                   dientes = col_factor(levels = NULL),
+                                   sexo = col_factor(levels = c("H","M")),
+                                   nutri = col_factor(levels = NULL),
+                                   zona = col_factor(levels = c("BR","BSO","BSE","MSC","BSS","LF")),
+                                   prenez = col_factor(levels = c("si","no"))
+                      )
+) %>% 
+  select(-extrmuni, -abertura, -fotogral, -fotodent, -WPT)
+
+totales_tipo_20 <- datos_ind %>% 
+   mutate(
+    edad = if_else(edad == "1","ternero",
+                   if_else(edad=="2"|edad=="3", "joven",
+                           "adulto")),
+    zona = if_else(zona == "BSS"|zona == "BSO"|zona == "BSE","BS", zona)) %>% 
+  group_by(zona,edad,sexo) %>% 
+  summarise(
+    n = n()
+  )
+
+totales_20 <- datos_ind %>% 
+   mutate(
+    edad = if_else(edad == "1","ternero",
+                   if_else(edad=="2"|edad=="3", "joven",
+                           "adulto")),
+    zona = if_else(zona == "BSS"|zona == "BSO"|zona == "BSE","BS", zona)) %>%
+  filter(zona=="BS"|zona=="BR") %>%
+  group_by(zona) %>% 
+  summarise(
+    n = n()
+  )
+  
+
+#mini ejemplo de figura para estos datos
+df <- data.frame(
+  area    = rep(c("Brazo Rico", "Brazo Sur"), each = 6),
+  periodo = rep(rep(c("2016-2020", "2021-2025"), each = 3), 2),
+  edad    = rep(c("Adulto", "Juvenil", "Cría"), 4),
+  n       = c(199, 69, 84,
+              116, 87, 40,
+              72, 23, 27,
+              43, 36, 5)
+) %>% mutate(edad=factor(edad, levels = c("Adulto", "Juvenil", "Cría")))
+
+ggplot(df, aes(x = area, y = n, fill = edad)) +
+  geom_col() +
+  facet_wrap(~ periodo) +
+  labs(x = NULL, y = "Total extraído")+
+  scale_fill_manual(values = c("#1b9e77","#7570b3","#d95f02"))+
+  theme_bw()
 ```
 
 Miro CPUE en base a esfuerzo en horas para granos mensual, trimestral y anual
@@ -86,7 +170,9 @@ ggplot(datos.mes.h,aes(x = fecham, y = CPUEmensual, col= etapa))+
   theme_bw()+
   theme(legend.position="none")+
   facet_wrap(~zona2)+
-  ggtitle("CPUE mensual")
+  ggtitle("CPUE mensual")+
+  theme(axis.text.x = element_text(angle = 45,vjust=1, hjust=1))+
+  scale_x_date(date_breaks = "1 year",date_labels = "%Y")
   
 ```
 
@@ -113,7 +199,9 @@ ggplot(datos.trim.h,aes(x = fechat, y = CPUEtrim, col= etapa))+
   theme_bw()+
   theme(legend.position="none")+
   facet_wrap(~zona2)+
-  ggtitle("CPUE trimestral")
+  ggtitle("CPUE trimestral")+
+  theme(axis.text.x = element_text(angle = 45,vjust=1, hjust=1))+
+  scale_x_date(date_breaks = "1 year",date_labels = "%Y")
 
 # trim BR y BS
 
@@ -122,13 +210,21 @@ datos.trim.h.BRBS <- datos.trim.h %>%
 
 ggplot(datos.trim.h.BRBS,aes(x = fechat, y = CPUEtrim, col= etapa))+
   geom_point()+
-  geom_smooth(data=subset(datos.trim.h.BRBSO, y <= 2020),method="lm", se=T)+
+  geom_smooth(data=subset(datos.trim.h.BRBS, y <= 2020),method="lm", se=T)+
   theme_bw()+
   theme(legend.position="none")+
   facet_wrap(~zona2)+
-  ggtitle("CPUE trimestral")
+  ggtitle("CPUE trimestral")+
+  theme(axis.text.x = element_text(angle = 45,vjust=1, hjust=1))+
+  scale_x_date(date_breaks = "1 year",date_labels = "%Y")
 
 
+```
+
+Tablita para esfuerzos por trimestre
+
+```{r}
+group_by(datos.trim.h.BRBS,y,zona2,trim) %>%  summarise(htrim)
 ```
 
 Anual
@@ -150,5 +246,251 @@ ggplot(datos.year.h,aes(x = fechay, y = CPUEanual, col= etapa))+
   theme_bw()+
   theme(legend.position="none")+
   facet_wrap(~zona2)+
-  ggtitle("CPUE anual")
+  ggtitle("CPUE anual")+
+  theme(axis.text.x = element_text(angle = 45,vjust=1, hjust=1))+
+  scale_x_date(date_breaks = "1 year",date_labels = "%Y")
+```
+
+Seguimos con datos de edad y sexo individuales:
+
+```{r}
+datos_ind_26 <- read_csv("datos_ind_26.csv", col_names = T,
+                      na = c("NA", ""),
+                      col_types = cols(tipo = col_factor(levels = c("vaca",
+                                                                    "toro",
+                                                                    "vaquillona",
+                                                                    "novillo",
+                                                                    "ternero")),
+                                   nutri = col_factor(levels = NULL),
+                                   zona = col_factor(levels = c("BR","BSO",
+                                                                "BSE","BSS",
+                                                                "Btoro","Cris"))
+                                   )
+                      )%>% 
+  mutate(
+    sexo = case_when(
+      tipo %in% c("vaca", "vaquillona") ~ "H",
+      tipo %in% c("toro","novillo") ~ "M",
+      tipo == "ternero" ~ "H"),
+    edad = if_else(tipo == "ternero","ternero",
+                   if_else(tipo=="vaquillona"|tipo=="novillo", "joven",
+                           "adulto")),
+    zona = if_else(zona == "BSS"|zona == "BSO"|zona == "BSE","BS", zona))
+```
+
+Para las zonas de interés
+
+```{r}
+datos_ind_26_sex <- datos_ind_26 %>%
+  group_by(y,sexo,edad, zona) %>% 
+  filter(zona == "BR"| zona == "BS") %>% 
+  summarise(Total = n()) %>% 
+  mutate(Pob = ifelse(sexo == "H", -Total,Total))
+
+ggplot(datos_ind_26_sex,aes(x = edad,y = Pob, fill = sexo)) +
+    geom_col(position = "stack", alpha = 0.6) + 
+    coord_flip() +
+  scale_fill_manual(values = c("red", "blue")) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      plot.caption = element_text(hjust = 0)) +
+    scale_y_continuous(labels = abs, limits = c(-20,20))+
+  scale_x_discrete(limits=rev)+
+       labs(y = "Cantidad",
+         x = "edad",
+         title = "Pirámide")+
+        facet_grid(y~zona)
+```
+
+Arreglo temita de terneros sin sexo:\
+
+```{r}
+datos_ind_26_sex_corr <- datos_ind_26_sex %>%
+  filter(!(edad == "ternero" & sexo == "H")) %>%
+  bind_rows(
+    datos_ind_26_sex %>%
+      filter(edad == "ternero", sexo == "H") %>%
+      mutate(
+        Total = Total / 2
+      ),
+    
+    datos_ind_26_sex %>%
+      filter(edad == "ternero", sexo == "H") %>%
+      mutate(
+        sexo  = "M",
+        Total = Total / 2
+      )
+  ) %>%
+  
+  # recalcular Pob al final
+  mutate(
+    Pob = if_else(sexo == "H", -Total, Total)
+  )
+
+ggplot(datos_ind_26_sex_corr,aes(x = edad,y = Pob, fill = sexo)) +
+    geom_col(position = "stack", alpha = 0.6) + 
+    coord_flip() +
+  scale_fill_manual(values = c("red", "blue")) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      plot.caption = element_text(hjust = 0)) +
+    scale_y_continuous(labels = abs, limits = c(-20,20))+
+  scale_x_discrete(limits=rev)+
+       labs(y = "Cantidad",
+         x = "edad",
+         title = "Pirámide")+
+        facet_grid(y~zona)
+```
+
+Hago prueba con las dos áreas juntas:
+
+```{r}
+
+ggplot(datos_ind_26_sex_corr,aes(x = edad,y = Pob, fill = sexo)) +
+    geom_col(position = "stack", alpha = 0.6) + 
+    coord_flip() +
+  scale_fill_manual(values = c("red", "blue")) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      plot.caption = element_text(hjust = 0)) +
+    scale_y_continuous(labels = abs, limits = c(-20,20))+
+  scale_x_discrete(limits=rev)+
+       labs(y = "Cantidad",
+         x = "edad",
+         title = "Pirámide")+
+  facet_wrap(vars(y))
+```
+
+Por último... extracción con baqueano y perros (Gustavo)
+
+```{r}
+datos_G <- read_csv("datos_Gustavo2025.csv", 
+                  col_types = cols(.default = "?",
+                                   mes = col_double(),
+                                   dia = col_double(),
+                                   año = col_double(),
+                                   zona = col_factor(levels = c("BR","BSO","BSE","BSS")),
+                                   nutri = col_factor(levels = c("Desnutrido","Regular","Muy Bueno", "Desconocido","No corresponde")))
+                  ) %>% 
+  remove_empty(which = "rows") %>% 
+      mutate(zona2 = fct_recode(zona, "BR" = "BR",
+                          "BS" = "BSO",
+                          "BS" = "BSS",
+                          "BS" = "BSE"),
+             fecha = make_date(year = año, month = mes, day = dia),
+             eff = dias_trabajo*trabajadores*perros)
+```
+
+Miremos el éxito de captura según esfuerzo en grano mensual
+
+```{r}
+datos_g_mes <- datos_G %>% 
+  group_by(mes, zona2) %>% 
+  summarise(cantmensual = sum(extraidos, na.rm = T),
+            eff_mensual = sum(eff,na.rm = TRUE)) %>% 
+  filter(eff_mensual != 0) %>% 
+  mutate(CPUEmensual = cantmensual/eff_mensual) %>%
+  mutate(fecham = make_date(year = 2025, month = mes))
+
+ggplot(datos_g_mes,aes(x = fecham, y = CPUEmensual))+
+  geom_point(aes(color=zona2),size=3)+
+  geom_smooth(method="lm", se=F,color="gray",lwd=1.1)+
+    scale_color_manual(values = c("#1b9e77","#7570b3"))+
+  theme_bw()+
+  theme(legend.position="none")
+  
+
+ggplot(datos_g_mes,aes(x = fecham, y = CPUEmensual))+
+  geom_point()+
+  theme_bw()+
+  theme(legend.position="none")+
+  facet_wrap(~zona2)
+```
+
+Relaciones de éxito de captura con esfuerzos:
+
+```{r}
+ggplot(datos_G,aes(x=perros,y=extraidos))+
+  geom_point()
+
+ggplot(datos_G,aes(x=trabajadores,y=extraidos))+
+  geom_point()
+
+datos_G %>% mutate(eff=perros*trabajadores*dias_trabajo) %>% 
+ggplot(aes(x=eff,y=extraidos))+
+  geom_point()
+
+```
+
+Caracterización por sexo y edad, de lo que se puede porque son 35 pero muchos NA
+
+Cargo datos individuales
+
+```{r}
+datos_ind_G <- read_csv("datos_ind_G.csv", col_names = T,
+                      na = c("NA", ""),
+                      col_types = cols(tipo = col_factor(levels = c("vaca",
+                                                                    "toro",
+                                                                    "vaquillona",
+                                                                    "novillo",
+                                                                    "ternero")),
+                                   nutri = col_factor(levels = NULL),
+                                   zona = col_factor(levels = c("BR","BSO",
+                                                                "BSE","BSS"))
+                                   )
+                      )%>% 
+  mutate(
+    sexo = case_when(
+      tipo %in% c("vaca", "vaquillona") ~ "H",
+      tipo %in% c("toro","novillo") ~ "M",
+      tipo == "ternero" ~ "H"),
+    edad = if_else(tipo == "ternero","ternero",
+                   if_else(tipo=="vaquillona"|tipo=="novillo", "joven",
+                           "adulto")),
+    zona = if_else(zona == "BSS"|zona == "BSO"|zona == "BSE","BS", zona))
+```
+
+Fabrico tabla que puede interpretarse como pirámide, resuelvo tema de terneros sin sexo
+
+```{r}
+datos_ind_G_sex <- datos_ind_G %>%
+  group_by(y,sexo,edad,zona) %>% 
+  filter(zona == "BR"| zona == "BS") %>% 
+  summarise(Total = n()) %>% 
+  mutate(Pob = ifelse(sexo == "H", -Total,Total))
+
+
+datos_ind_G_sex_corr <- datos_ind_G_sex %>%
+  filter(!(edad == "ternero" & sexo == "H")) %>%
+  bind_rows(
+    datos_ind_G_sex %>%
+      filter(edad == "ternero", sexo == "H") %>%
+      mutate(Total = Total / 2),
+    
+    datos_ind_G_sex %>%
+      filter(edad == "ternero", sexo == "H") %>%
+      mutate(
+        sexo  = "M",
+        Total = Total / 2)) %>%
+  mutate(Pob = if_else(sexo == "H", -Total, Total))
+```
+
+Ahora sí, la pirámide:
+
+```{r}
+ggplot(datos_ind_G_sex_corr,aes(x = edad,y = Pob, fill = sexo)) +
+    geom_col(position = "stack", alpha = 0.6) + 
+    coord_flip() +
+  scale_fill_manual(values = c("red", "blue")) +
+    theme_minimal() +
+    theme(
+      legend.position = "right",
+      plot.caption = element_text(hjust = 0)) +
+    scale_y_continuous(labels = abs, limits = c(-20,20))+
+  scale_x_discrete(limits=rev)+
+       labs(y = "Cantidad",
+         x = "edad")
 ```

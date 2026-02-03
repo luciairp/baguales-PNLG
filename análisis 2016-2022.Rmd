@@ -297,6 +297,38 @@ ggplot(datos_ind_sex,aes(x = edad,y = Pob, fill = sexo)) +
 ```
 Lo que puede observarse en Brazo Rico es que entre 2016 y 2019 que se sostuvieron los niveles de extracción, si bien la abundancia de la población pudo no haber disminuido, la respuesta demográfica es evidente en la modificación de la pirámide de la mayor cantidad de adultos a estar cada vez menos representada esa edad, y también se observa la disminución de la representación de reclutas de primeras edades, además de una relación más armónica entre las cantidades de las edades 1, 2, 3 y 4 años. Esto afirma que existe un efecto de largo plazo en la extracción de baguales, no inmediato, que recién impactará en la población varios años después. Para el área Brazo Sur Oeste no existe información suficiente para evaluar si este efecto ocurre también.La cantidad de horas destinadas a caza los años analizados fue 
 
+Agrego: unifico todo lo de brazo SUR y Brazo Rico, y edades a 3 clases
+```{r}
+datos_ind_sex_gral <- datos_ind %>%
+  mutate(
+  edad = case_when(
+      edad == "1" ~ "ternero",
+      edad %in% c("2","3") ~ "joven",
+      edad %in% c("4","5") ~ "adulto")) %>% 
+  mutate(edad = ordered(fct_relevel(edad, "ternero","joven","adulto"))) %>% 
+  group_by(y,sexo,edad, zona) %>% 
+  filter(zona == "BR"| zona == "BSO"|zona=="BSE"|zona=="BSS") %>% 
+  filter(edad != "NA") %>% 
+  filter(y < 2020) %>% 
+  summarise(Total = n()) %>% 
+  mutate(Pob = ifelse(sexo == "H", -Total,Total))
+
+ggplot(datos_ind_sex_gral,aes(x = edad,y = Pob, fill = sexo)) +
+    geom_col(position = "stack", alpha = 0.6) + 
+    coord_flip() +
+    scale_fill_manual(values = c("red", "blue")) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      plot.caption = element_text(hjust = 0)) +
+    scale_y_continuous(labels = abs) +
+    labs(y = "Cantidad",
+         x = "edad",
+         title = "Pirámide")+
+  facet_wrap(vars(y))
+```
+
+
 Por último reviso los datos sobre preñeces:
 ```{r}
 datos_pregn <- datos_ind %>% 
